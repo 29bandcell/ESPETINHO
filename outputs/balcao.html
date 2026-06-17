@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Balcão - Espetinho do Gordinho</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <div class="section-title"><h1>Venda de balcão</h1></div>
+    <div class="grid">
+      <div id="menu"></div>
+      <aside class="cart">
+        <div id="cart"></div>
+        <form id="form" class="form">
+          <label>Nome do cliente<input name="customer_name" placeholder="Opcional"></label>
+          <label>Pagamento
+            <select name="payment_method">
+              <option value="dinheiro">Dinheiro</option>
+              <option value="pix">Pix</option>
+              <option value="cartao">Cartão</option>
+            </select>
+          </label>
+          <button>Registrar venda</button>
+        </form>
+      </aside>
+    </div>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    renderShell("Balcão");
+    const cart = makeCart();
+    let menuData = null;
+    function refresh() {
+      renderMenu(byId("menu"), menuData, cart, refresh);
+      renderCart(byId("cart"), cart, { onChange: refresh });
+    }
+    loadMenu().then(data => { menuData = data; refresh(); });
+    byId("form").addEventListener("submit", async e => {
+      e.preventDefault();
+      if (!cart.items().length) return showModal("Carrinho vazio", "<p>Escolha pelo menos um produto.</p>");
+      const payload = Object.fromEntries(new FormData(e.currentTarget).entries());
+      payload.channel = "balcao";
+      payload.fulfillment = "balcao";
+      const order = await createOrder(payload, cart.items());
+      cart.clear();
+      refresh();
+      printOrder(order);
+      showModal("Venda registrada", receiptHtml(order));
+    });
+  </script>
+</body>
+</html>

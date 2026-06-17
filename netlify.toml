@@ -1,0 +1,12 @@
+[build]
+  publish = "outputs"
+
+[[redirects]]
+  from = "/"
+  to = "/publico.html"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/publico.html"
+  status = 200

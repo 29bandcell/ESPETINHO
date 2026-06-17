@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proprietário - Espetinho do Gordinho</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <div class="section-title"><h1>Caixa do proprietário</h1><button class="light" id="logout">Sair</button></div>
+    <div class="segmented">
+      <button class="active" data-range="day">Dia</button>
+      <button data-range="week">Semana</button>
+      <button data-range="month">Mes</button>
+    </div>
+    <section id="summary" class="menu-list"></section>
+    <section class="panel">
+      <h2>Movimentacao</h2>
+      <div id="orders"></div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    renderShell("Proprietário");
+    const main = document.querySelector("main");
+    function showLogin() {
+      main.classList.add("hidden");
+      const modal = byId("modal") || document.body.appendChild(document.createElement("div"));
+      modal.id = "modal";
+      modal.className = "modal show";
+      modal.innerHTML = `<div class="modal-card"><h2>Senha do proprietário</h2>
+        <form id="ownerLogin" class="form">
+          <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
+          <button>Entrar</button>
+        </form>
+      </div>`;
+      byId("ownerLogin").addEventListener("submit", e => {
+        e.preventDefault();
+        if (e.currentTarget.password.value === CONFIG.OWNER_PASSWORD) {
+          localStorage.setItem("espetinho_owner_ok", "true");
+          byId("modal").classList.remove("show");
+          main.classList.remove("hidden");
+          loadCash();
+        } else {
+          e.currentTarget.password.value = "";
+          e.currentTarget.password.placeholder = "Senha incorreta";
+        }
+      });
+    }
+    let range = "day";
+    function sinceDate() {
+      const d = new Date();
+      if (range === "day") d.setHours(0,0,0,0);
+      if (range === "week") d.setDate(d.getDate() - 7);
+      if (range === "month") d.setMonth(d.getMonth() - 1);
+      return d;
+    }
+    async function loadCash() {
+      const all = await fetchOrders(["fechado", "impresso", "novo", "aberto"]);
+      const since = sinceDate();
+      const orders = all.filter(o => new Date(o.created_at) >= since);
+      const closed = orders.filter(o => o.status === "fechado" || o.channel !== "mesa");
+      const total = closed.reduce((s, o) => s + Number(o.total || 0), 0);
+      const byPay = closed.reduce((acc, o) => {
+        acc[o.payment_method] = (acc[o.payment_method] || 0) + Number(o.total || 0);
+        return acc;
+      }, {});
+      byId("summary").innerHTML = `
+        <div class="panel"><h3>Total</h3><p class="price">${money(total)}</p></div>
+        <div class="panel"><h3>Pix</h3><p class="price">${money(byPay.pix)}</p></div>
+        <div class="panel"><h3>Dinheiro</h3><p class="price">${money(byPay.dinheiro)}</p></div>
+        <div class="panel"><h3>Cartão</h3><p class="price">${money((byPay.cartao || 0) + (byPay.cartao_credito || 0))}</p></div>`;
+      byId("orders").innerHTML = orders.map(o => `<div class="item-row"><span>${new Date(o.created_at).toLocaleString("pt-BR")} - ${o.customer_name || o.channel} - ${o.payment_method}</span><strong>${money(o.total)}</strong></div>`).join("");
+    }
+    document.querySelectorAll("[data-range]").forEach(btn => btn.onclick = () => {
+      document.querySelectorAll("[data-range]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      range = btn.dataset.range;
+      loadCash();
+    });
+    byId("logout").onclick = () => { localStorage.removeItem("espetinho_owner_ok"); location.reload(); };
+    if (localStorage.getItem("espetinho_owner_ok") === "true") loadCash();
+    else showLogin();
+  </script>
+</body>
+</html>

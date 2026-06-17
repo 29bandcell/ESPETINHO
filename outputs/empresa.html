@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Empresa - Espetinho do Gordinho</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <div class="section-title"><h1>Area da empresa</h1><p class="muted">Atualiza a cada 10 segundos.</p></div>
+    <div class="tabs">
+      <button class="active" data-tab="orders">Pedidos</button>
+      <button data-tab="menuAdmin">Cardapio</button>
+      <button data-tab="links">Links</button>
+    </div>
+    <section id="orders" class="orders"></section>
+    <section id="menuAdmin" class="hidden admin-grid">
+      <div>
+        <form id="categoryForm" class="panel form">
+          <h2>Categoria</h2>
+          <input type="hidden" name="category_id">
+          <label>Nova categoria<input name="category_name" required placeholder="Ex: Espetinhos"></label>
+          <div class="actions">
+            <button>Salvar categoria</button>
+            <button type="button" class="light" id="clearCategory">Limpar</button>
+          </div>
+          <div id="adminCategories" class="mini-list"></div>
+        </form>
+        <br>
+        <form id="productForm" class="panel form">
+          <h2>Produto</h2>
+          <input type="hidden" name="id">
+          <label>Categoria<select name="category_id" required></select></label>
+          <label>Nome<input name="name" required></label>
+          <label>Descricao<input name="description"></label>
+          <label>Tamanho<input name="size"></label>
+          <label>Preco<input name="price" inputmode="decimal" required></label>
+          <label><input type="checkbox" name="sold_out"> Esgotado</label>
+          <div class="actions"><button>Salvar</button><button type="button" class="light" id="clearProduct">Limpar</button></div>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Cardapio</h2>
+        <div id="adminProducts"></div>
+      </div>
+    </section>
+    <section id="links" class="hidden panel">
+      <h2>Controle de links</h2>
+      <div class="links-grid">
+        <a class="link-box" href="publico.html">Link público</a>
+        <a class="link-box" href="balcao.html">Balcão</a>
+        <a class="link-box" href="mesas.html">Mesas</a>
+        <a class="link-box" href="empresa.html">Empresa</a>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    renderShell("Empresa");
+    const printed = new Set(JSON.parse(localStorage.getItem("espetinho_printed") || "[]"));
+    let menuData = null;
+    function savePrinted() { localStorage.setItem("espetinho_printed", JSON.stringify([...printed])); }
+    function whats(phone) {
+      const digits = String(phone || "").replace(/\D/g, "");
+      return digits ? `<a target="_blank" href="https://wa.me/55${digits}">WhatsApp</a>` : "";
+    }
+    async function loadOrders() {
+      const orders = await fetchOrders(["novo", "aberto", "impresso"]);
+      byId("orders").innerHTML = orders.length ? orders.map(order => `
+        <article class="order-card">
+          <div class="order-head">
+            <div>
+              <strong>${order.channel === "mesa" ? `Mesa ${order.table_number}` : order.customer_name || order.channel}</strong>
+              ${order.status === "novo" ? '<span class="badge">NOVO</span>' : `<span class="badge open">${order.status}</span>`}
+              <p class="muted">${new Date(order.created_at).toLocaleString("pt-BR")} ${whats(order.customer_phone)}</p>
+            </div>
+            <strong>${money(order.total)}</strong>
+          </div>
+          ${(order.items || []).map(item => `<div class="item-row"><span>${item.quantity}x ${item.product_name}</span><button class="danger" data-remove="${item.id}">Excluir</button></div>`).join("")}
+          <p><strong>Pagamento:</strong> ${order.payment_method}</p>
+          ${order.payment_method === "dinheiro" && order.change_for ? `<p><strong>LEVAR TROCO:</strong> ${money(order.change_for)}</p>` : ""}
+          ${order.payment_method === "cartao_credito" || order.payment_method === "cartao" ? "<p><strong>LEVAR MAQUINETA</strong></p>" : ""}
+          <div class="actions">
+            <button data-print="${order.id}">Imprimir</button>
+            ${order.channel === "mesa" ? `
+              <select data-pay="${order.id}">
+                <option value="dinheiro">Dinheiro</option>
+                <option value="pix">Pix</option>
+                <option value="cartao">Cartão</option>
+              </select>
+              <button class="good" data-close="${order.id}">Fechar mesa</button>
+            ` : `<button class="good" data-done="${order.id}">Finalizar</button>`}
+          </div>
+        </article>
+      `).join("") : `<p class="muted">Nenhum pedido aberto.</p>`;
+      orders.filter(o => o.status === "novo" && !printed.has(o.id)).forEach(async order => {
+        printed.add(order.id);
+        savePrinted();
+        printOrder(order);
+        await updateOrder(order.id, { status: "impresso", printed_at: new Date().toISOString() });
+      });
+      byId("orders").querySelectorAll("[data-print]").forEach(btn => btn.onclick = async () => {
+        const order = orders.find(o => o.id === btn.dataset.print);
+        printOrder(order);
+        await updateOrder(order.id, { status: order.channel === "mesa" ? "aberto" : "impresso", printed_at: new Date().toISOString() });
+        loadOrders();
+      });
+      byId("orders").querySelectorAll("[data-close]").forEach(btn => btn.onclick = async () => {
+        const order = orders.find(o => o.id === btn.dataset.close);
+        const payment = byId("orders").querySelector(`[data-pay="${order.id}"]`)?.value || "dinheiro";
+        printOrder(order);
+        await updateOrder(order.id, { status: "fechado", closed_at: new Date().toISOString(), payment_method: payment });
+        loadOrders();
+      });
+      byId("orders").querySelectorAll("[data-done]").forEach(btn => btn.onclick = async () => {
+        await updateOrder(btn.dataset.done, { status: "fechado", closed_at: new Date().toISOString() });
+        loadOrders();
+      });
+      byId("orders").querySelectorAll("[data-remove]").forEach(btn => btn.onclick = async () => {
+        await removeItem(btn.dataset.remove);
+        loadOrders();
+      });
+    }
+    async function loadMenuAdmin() {
+      menuData = await loadMenu();
+      byId("productForm").category_id.innerHTML = menuData.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+      byId("adminCategories").innerHTML = menuData.categories.map(c => `
+        <div class="item-row">
+          <span>${c.name}</span>
+          <span class="actions">
+            <button type="button" data-edit-category="${c.id}">Editar</button>
+            <button type="button" class="danger" data-delete-category="${c.id}">Deletar</button>
+          </span>
+        </div>
+      `).join("");
+      byId("adminCategories").querySelectorAll("[data-edit-category]").forEach(btn => btn.onclick = () => {
+        const category = menuData.categories.find(c => c.id === btn.dataset.editCategory);
+        const form = byId("categoryForm");
+        form.category_id.value = category.id;
+        form.category_name.value = category.name;
+        form.category_name.focus();
+      });
+      byId("adminCategories").querySelectorAll("[data-delete-category]").forEach(btn => btn.onclick = async () => {
+        const category = menuData.categories.find(c => c.id === btn.dataset.deleteCategory);
+        await deleteCategory(btn.dataset.deleteCategory);
+        await loadMenuAdmin();
+        showModal("Categoria deletada", `<p>${category?.name || "Categoria"} foi removida do cardápio.</p>`);
+      });
+      byId("adminProducts").innerHTML = menuData.products.map(p => `
+        <div class="item-row ${p.sold_out ? "soldout" : ""}">
+          <span>${displayName(p)} - ${money(p.price)} ${p.sold_out ? "<strong>(ESGOTADO)</strong>" : ""}</span>
+          <span class="actions">
+            <button class="${p.sold_out ? "good" : "warn"}" data-stock="${p.id}" data-soldout="${p.sold_out ? "false" : "true"}">${p.sold_out ? "Disponibilizar" : "Esgotar"}</button>
+            <button data-edit="${p.id}">Editar</button>
+            <button class="danger" data-delete="${p.id}">Deletar</button>
+          </span>
+        </div>`).join("");
+      byId("adminProducts").querySelectorAll("[data-edit]").forEach(btn => btn.onclick = () => {
+        const p = menuData.products.find(x => x.id === btn.dataset.edit);
+        const f = byId("productForm");
+        f.id.value = p.id; f.category_id.value = p.category_id; f.name.value = p.name; f.description.value = p.description || "";
+        f.size.value = p.size || ""; f.price.value = String(p.price).replace(".", ","); f.sold_out.checked = p.sold_out;
+      });
+      byId("adminProducts").querySelectorAll("[data-delete]").forEach(btn => btn.onclick = async () => {
+        await saveProduct({ id: btn.dataset.delete, active: false });
+        loadMenuAdmin();
+      });
+      byId("adminProducts").querySelectorAll("[data-stock]").forEach(btn => btn.onclick = async () => {
+        await saveProduct({ id: btn.dataset.stock, sold_out: btn.dataset.soldout === "true" });
+        loadMenuAdmin();
+      });
+    }
+    async function saveProduct(product) {
+      const client = sb();
+      if (!client) {
+        const data = getDb();
+        if (product.id) data.products = data.products.map(p => p.id === product.id ? { ...p, ...product } : p);
+        else data.products.push({ ...product, id: crypto.randomUUID(), active: true, sort_order: data.products.length + 1 });
+        setDb(data);
+        return;
+      }
+      const { id, ...body } = product;
+      const table = db("espetinho_products");
+      const req = id ? table.update(body).eq("id", id) : table.insert(body);
+      const { error } = await req;
+      if (error) throw error;
+    }
+    async function saveCategory(name, id) {
+      const client = sb();
+      if (!client) {
+        const data = getDb();
+        if (id) data.categories = data.categories.map(c => c.id === id ? { ...c, name } : c);
+        else data.categories.push({ id: crypto.randomUUID(), name, sort_order: data.categories.length + 1, active: true });
+        setDb(data);
+        return;
+      }
+      const request = id
+        ? db("espetinho_categories").update({ name }).eq("id", id)
+        : db("espetinho_categories").insert({ name, sort_order: ((menuData?.categories?.length || 0) + 1) * 10 });
+      const { error } = await request;
+      if (error) throw error;
+    }
+    async function deleteCategory(id) {
+      const client = sb();
+      if (!client) {
+        const data = getDb();
+        data.categories = data.categories.map(c => c.id === id ? { ...c, active: false } : c);
+        data.products = data.products.map(p => p.category_id === id ? { ...p, active: false } : p);
+        setDb(data);
+        return;
+      }
+      const productUpdate = await db("espetinho_products").update({ active: false }).eq("category_id", id);
+      if (productUpdate.error) throw productUpdate.error;
+      const categoryUpdate = await db("espetinho_categories").update({ active: false }).eq("id", id);
+      if (categoryUpdate.error) throw categoryUpdate.error;
+    }
+    byId("categoryForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const form = e.currentTarget;
+      const name = new FormData(form).get("category_name").trim();
+      const id = new FormData(form).get("category_id");
+      if (!name) return;
+      try {
+        await saveCategory(name, id);
+        form.reset();
+        await loadMenuAdmin();
+        showModal("Categoria salva", `<p>${name} foi salva no cardápio.</p>`);
+      } catch (error) {
+        showModal("Erro ao salvar categoria", `<p>${error.message || error}</p>`);
+      }
+    });
+    byId("clearCategory").onclick = () => byId("categoryForm").reset();
+    byId("productForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const f = e.currentTarget;
+      try {
+        await saveProduct({
+          id: f.id.value || undefined, category_id: f.category_id.value, name: f.name.value, description: f.description.value,
+          size: f.size.value, price: Number(f.price.value.replace(",", ".")), sold_out: f.sold_out.checked, active: true
+        });
+        f.reset();
+        await loadMenuAdmin();
+        showModal("Produto salvo", "<p>O cardápio foi atualizado.</p>");
+      } catch (error) {
+        showModal("Erro ao salvar produto", `<p>${error.message || error}</p>`);
+      }
+    });
+    byId("clearProduct").onclick = () => byId("productForm").reset();
+    document.querySelectorAll("[data-tab]").forEach(btn => btn.onclick = () => {
+      document.querySelectorAll("[data-tab]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      ["orders", "menuAdmin", "links"].forEach(id => byId(id).classList.toggle("hidden", id !== btn.dataset.tab));
+      if (btn.dataset.tab === "menuAdmin") loadMenuAdmin();
+    });
+    loadOrders();
+    setInterval(loadOrders, 10000);
+    window.addEventListener("storage", loadOrders);
+  </script>
+</body>
+</html>

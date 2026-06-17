@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mesas - Espetinho do Gordinho</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <div class="section-title"><h1>Mesas</h1><p class="muted">Escolha a mesa e adicione os produtos da comanda.</p></div>
+    <div class="tables" id="tables"></div>
+    <div class="grid">
+      <div id="menu"></div>
+      <aside class="cart">
+        <h2 id="tableTitle">Mesa 1</h2>
+        <div id="cart"></div>
+        <button id="send">Enviar para comanda</button>
+      </aside>
+    </div>
+  </main>
+  <script src="app.js"></script>
+  <script>
+    renderShell("Mesas");
+    const cartsByTable = {};
+    let selectedTable = 1;
+    let menuData = null;
+    function currentCart() {
+      if (!cartsByTable[selectedTable]) cartsByTable[selectedTable] = makeCart();
+      return cartsByTable[selectedTable];
+    }
+    function drawTables() {
+      byId("tables").innerHTML = Array.from({ length: 10 }, (_, i) => `<button class="table-btn ${i + 1 === selectedTable ? "active" : ""}" data-table="${i + 1}">Mesa ${i + 1}</button>`).join("");
+      byId("tables").querySelectorAll("[data-table]").forEach(btn => btn.onclick = () => {
+        selectedTable = Number(btn.dataset.table);
+        byId("tableTitle").textContent = `Mesa ${selectedTable}`;
+        drawTables();
+        refresh();
+      });
+    }
+    function refresh() {
+      renderMenu(byId("menu"), menuData, currentCart(), refresh);
+      renderCart(byId("cart"), currentCart(), { onChange: refresh });
+    }
+    drawTables();
+    loadMenu().then(data => { menuData = data; refresh(); });
+    byId("send").addEventListener("click", async () => {
+      const cart = currentCart();
+      if (!cart.items().length) return showModal("Carrinho vazio", "<p>Escolha pelo menos um produto.</p>");
+      const order = await createOrder({
+        channel: "mesa", table_number: selectedTable, fulfillment: "mesa", payment_method: "pendente",
+        customer_name: `Mesa ${selectedTable}`
+      }, cart.items());
+      cart.clear();
+      refresh();
+      printOrder(order);
+      showModal("Pedido enviado", `<p>Itens adicionados na mesa ${selectedTable}.</p>`);
+    });
+  </script>
+</body>
+</html>
