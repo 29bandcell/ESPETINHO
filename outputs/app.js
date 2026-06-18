@@ -259,11 +259,41 @@ async function removeItem(id) {
     const data = getDb();
     const item = data.items.find(i => i.id === id);
     if (item) item.removed = true;
+    const order = item ? data.orders.find(o => o.id === item.order_id) : null;
+    if (order) {
+      const remaining = data.items.filter(i => i.order_id === order.id && !i.removed);
+      const subtotal = remaining.reduce((sum, i) => sum + Number(i.unit_price || 0) * Number(i.quantity || 0), 0);
+      order.subtotal = subtotal;
+      order.total = subtotal + Number(order.delivery_fee || 0);
+      order.updated_at = new Date().toISOString();
+    }
     setDb(data);
     return;
   }
+  const { data: item, error: itemReadError } = await db("espetinho_order_items").select("*").eq("id", id).single();
+  if (itemReadError) throw itemReadError;
   const { error } = await db("espetinho_order_items").update({ removed: true }).eq("id", id);
   if (error) throw error;
+  const { data: order, error: orderError } = await db("espetinho_orders").select("*").eq("id", item.order_id).single();
+  if (orderError) throw orderError;
+  const { data: remaining, error: remainingError } = await db("espetinho_order_items").select("*").eq("order_id", item.order_id).eq("removed", false);
+  if (remainingError) throw remainingError;
+  const subtotal = (remaining || []).reduce((sum, row) => sum + Number(row.unit_price || 0) * Number(row.quantity || 0), 0);
+  await updateOrder(item.order_id, { subtotal, total: subtotal + Number(order.delivery_fee || 0) });
+}
+
+async function cancelOrder(id) {
+  const client = sb();
+  if (!client) {
+    const data = getDb();
+    data.orders = data.orders.map(o => o.id === id ? { ...o, status: "cancelado", updated_at: new Date().toISOString() } : o);
+    data.items = data.items.map(i => i.order_id === id ? { ...i, removed: true } : i);
+    setDb(data);
+    return;
+  }
+  const itemUpdate = await db("espetinho_order_items").update({ removed: true }).eq("order_id", id);
+  if (itemUpdate.error) throw itemUpdate.error;
+  await updateOrder(id, { status: "cancelado", updated_at: new Date().toISOString() });
 }
 
 function displayName(item) {

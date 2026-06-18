@@ -93,6 +93,7 @@
               </select>
               <button class="good" data-close="${order.id}">Fechar mesa</button>
             ` : `<button class="good" data-done="${order.id}">Finalizar</button>`}
+            <button class="danger" data-cancel-order="${order.id}">Excluir pedido</button>
           </div>
         </article>
       `).join("") : `<p class="muted">Nenhum pedido aberto.</p>`;
@@ -121,6 +122,13 @@
       });
       byId("orders").querySelectorAll("[data-remove]").forEach(btn => btn.onclick = async () => {
         await removeItem(btn.dataset.remove);
+        loadOrders();
+      });
+      byId("orders").querySelectorAll("[data-cancel-order]").forEach(btn => btn.onclick = async () => {
+        const order = orders.find(o => o.id === btn.dataset.cancelOrder);
+        const label = order?.table_number ? `Mesa ${order.table_number}` : (order?.customer_name || "pedido");
+        if (!confirm(`Excluir todo o pedido de ${label}?`)) return;
+        await cancelOrder(btn.dataset.cancelOrder);
         loadOrders();
       });
     }
