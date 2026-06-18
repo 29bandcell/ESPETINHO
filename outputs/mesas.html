@@ -16,6 +16,11 @@
       <div id="menu"></div>
       <aside class="cart">
         <h2 id="tableTitle">Mesa 1</h2>
+        <div class="form">
+          <label>Nome do cliente
+            <input id="customerName" placeholder="Ex: Wellington">
+          </label>
+        </div>
         <div id="cart"></div>
         <button id="send">Enviar para comanda</button>
       </aside>
@@ -25,6 +30,7 @@
   <script>
     renderShell("Mesas");
     const cartsByTable = {};
+    const namesByTable = {};
     let selectedTable = 1;
     let menuData = null;
     function currentCart() {
@@ -34,8 +40,10 @@
     function drawTables() {
       byId("tables").innerHTML = Array.from({ length: 10 }, (_, i) => `<button class="table-btn ${i + 1 === selectedTable ? "active" : ""}" data-table="${i + 1}">Mesa ${i + 1}</button>`).join("");
       byId("tables").querySelectorAll("[data-table]").forEach(btn => btn.onclick = () => {
+        namesByTable[selectedTable] = byId("customerName").value.trim();
         selectedTable = Number(btn.dataset.table);
         byId("tableTitle").textContent = `Mesa ${selectedTable}`;
+        byId("customerName").value = namesByTable[selectedTable] || "";
         drawTables();
         refresh();
       });
@@ -46,14 +54,19 @@
     }
     drawTables();
     loadMenu().then(data => { menuData = data; refresh(); });
+    byId("customerName").addEventListener("input", event => {
+      namesByTable[selectedTable] = event.target.value.trim();
+    });
     byId("send").addEventListener("click", async () => {
       const cart = currentCart();
       if (!cart.items().length) return showModal("Carrinho vazio", "<p>Escolha pelo menos um produto.</p>");
+      const name = byId("customerName").value.trim();
       const order = await createOrder({
         channel: "mesa", table_number: selectedTable, fulfillment: "mesa", payment_method: "pendente",
-        customer_name: `Mesa ${selectedTable}`
+        customer_name: name ? `${name} - Mesa ${selectedTable}` : `Mesa ${selectedTable}`
       }, cart.items());
       cart.clear();
+      namesByTable[selectedTable] = name;
       refresh();
       printOrder(order);
       showModal("Pedido enviado", `<p>Itens adicionados na mesa ${selectedTable}.</p>`);

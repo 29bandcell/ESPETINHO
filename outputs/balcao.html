@@ -16,14 +16,36 @@
       <aside class="cart">
         <div id="cart"></div>
         <form id="form" class="form">
-          <label>Nome do cliente<input name="customer_name" placeholder="Opcional"></label>
+          <label>Nome<input name="customer_name" required></label>
+          <label>WhatsApp<input name="customer_phone" inputmode="numeric" maxlength="15" placeholder="(85) 99999-9999"></label>
+          <label>Entrega ou retirada
+            <select name="fulfillment" required>
+              <option value="retirada">Retirada</option>
+              <option value="entrega">Entrega</option>
+            </select>
+          </label>
+          <label id="addressWrap" class="hidden">Endereço<textarea name="customer_address" rows="2"></textarea></label>
+          <label id="areaWrap" class="hidden">Bairro
+            <select name="delivery_area">
+              <option value="">Selecione</option>
+              <option value="Vila" data-fee="2">Vila - R$ 2,00</option>
+              <option value="Patos" data-fee="0">Patos - sem taxa</option>
+              <option value="Patinhos" data-fee="3">Patinhos - R$ 3,00</option>
+            </select>
+          </label>
           <label>Pagamento
-            <select name="payment_method">
-              <option value="dinheiro">Dinheiro</option>
+            <select name="payment_method" required>
               <option value="pix">Pix</option>
+              <option value="dinheiro">Dinheiro</option>
               <option value="cartao">Cartão</option>
             </select>
           </label>
+          <div id="pixBox" class="panel">
+            <strong>Pix: 63.512.299/0001-83</strong><br>
+            <span class="muted">Nome: Francisco Dionísio</span><br><br>
+            <button type="button" class="secondary" id="copyPix">Copiar chave Pix</button>
+          </div>
+          <label id="changeWrap" class="hidden">Troco para<input name="change_for" inputmode="decimal" placeholder="Ex: 50,00"></label>
           <button>Registrar venda</button>
         </form>
       </aside>
@@ -34,23 +56,60 @@
     renderShell("Balcão");
     const cart = makeCart();
     let menuData = null;
+    let deliveryFee = 0;
+    const phoneMask = input => {
+      let v = input.value.replace(/\D/g, "").slice(0, 11);
+      if (v.length > 10) v = v.replace(/^(\d{2})(\d{5})(\d{4}).*/, "($1) $2-$3");
+      else if (v.length > 6) v = v.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, "($1) $2-$3");
+      else if (v.length > 2) v = v.replace(/^(\d{2})(\d*)/, "($1) $2");
+      input.value = v;
+    };
     function refresh() {
       renderMenu(byId("menu"), menuData, cart, refresh);
-      renderCart(byId("cart"), cart, { onChange: refresh });
+      renderCart(byId("cart"), cart, { deliveryFee, onChange: refresh });
+    }
+    function syncDelivery() {
+      const form = byId("form");
+      const isDelivery = form.fulfillment.value === "entrega";
+      byId("addressWrap").classList.toggle("hidden", !isDelivery);
+      byId("areaWrap").classList.toggle("hidden", !isDelivery);
+      deliveryFee = isDelivery ? Number(form.delivery_area.selectedOptions[0]?.dataset.fee || 0) : 0;
+      refresh();
+    }
+    function syncPayment() {
+      const method = byId("form").payment_method.value;
+      byId("pixBox").classList.toggle("hidden", method !== "pix");
+      byId("changeWrap").classList.toggle("hidden", method !== "dinheiro");
     }
     loadMenu().then(data => { menuData = data; refresh(); });
-    byId("form").addEventListener("submit", async e => {
-      e.preventDefault();
+    byId("form").customer_phone.addEventListener("input", e => phoneMask(e.target));
+    byId("form").fulfillment.addEventListener("change", syncDelivery);
+    byId("form").delivery_area.addEventListener("change", syncDelivery);
+    byId("form").payment_method.addEventListener("change", syncPayment);
+    byId("copyPix").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(CONFIG.PIX_KEY);
+      showModal("CHAVE PIX COPIADA", `<p>${CONFIG.PIX_KEY}</p>`);
+    });
+    byId("form").addEventListener("submit", async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
       if (!cart.items().length) return showModal("Carrinho vazio", "<p>Escolha pelo menos um produto.</p>");
-      const payload = Object.fromEntries(new FormData(e.currentTarget).entries());
+      if (form.fulfillment.value === "entrega" && !form.delivery_area.value) return showModal("Selecione o bairro", "<p>Escolha Vila, Patos ou Patinhos.</p>");
+      const payload = Object.fromEntries(new FormData(form).entries());
       payload.channel = "balcao";
-      payload.fulfillment = "balcao";
+      payload.delivery_fee = deliveryFee;
+      payload.change_for = payload.change_for ? Number(payload.change_for.replace(",", ".")) : null;
       const order = await createOrder(payload, cart.items());
       cart.clear();
+      form.reset();
+      syncDelivery();
+      syncPayment();
       refresh();
       printOrder(order);
       showModal("Venda registrada", receiptHtml(order));
     });
+    syncDelivery();
+    syncPayment();
   </script>
 </body>
 </html>

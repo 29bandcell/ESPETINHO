@@ -14,11 +14,18 @@
     <div class="segmented">
       <button class="active" data-range="day">Dia</button>
       <button data-range="week">Semana</button>
-      <button data-range="month">Mes</button>
+      <button data-range="month">Mês</button>
+    </div>
+    <div class="segmented">
+      <button class="active" data-payment="todos">Todos</button>
+      <button data-payment="pix">Pix</button>
+      <button data-payment="dinheiro">Dinheiro</button>
+      <button data-payment="cartao">Cartão</button>
+      <button data-payment="pendente">Pendente</button>
     </div>
     <section id="summary" class="menu-list"></section>
     <section class="panel">
-      <h2>Movimentacao</h2>
+      <h2>Movimentação</h2>
       <div id="orders"></div>
     </section>
   </main>
@@ -26,6 +33,9 @@
   <script>
     renderShell("Proprietário");
     const main = document.querySelector("main");
+    let range = "day";
+    let paymentFilter = "todos";
+
     function showLogin() {
       main.classList.add("hidden");
       const modal = byId("modal") || document.body.appendChild(document.createElement("div"));
@@ -50,7 +60,7 @@
         }
       });
     }
-    let range = "day";
+
     function sinceDate() {
       const d = new Date();
       if (range === "day") d.setHours(0,0,0,0);
@@ -58,10 +68,25 @@
       if (range === "month") d.setMonth(d.getMonth() - 1);
       return d;
     }
+
+    function paymentMatches(order) {
+      if (paymentFilter === "todos") return true;
+      if (paymentFilter === "cartao") return order.payment_method === "cartao" || order.payment_method === "cartao_credito";
+      return order.payment_method === paymentFilter;
+    }
+
+    async function deleteCashOrder(id) {
+      if (!confirm("Excluir este lançamento do caixa?")) return;
+      await cancelOrder(id);
+      loadCash();
+    }
+
     async function loadCash() {
       const all = await fetchOrders(["fechado", "impresso", "novo", "aberto"]);
       const since = sinceDate();
-      const orders = all.filter(o => new Date(o.created_at) >= since);
+      const orders = all
+        .filter(o => new Date(o.created_at) >= since)
+        .filter(paymentMatches);
       const closed = orders.filter(o => o.status === "fechado" || o.channel !== "mesa");
       const total = closed.reduce((s, o) => s + Number(o.total || 0), 0);
       const byPay = closed.reduce((acc, o) => {
@@ -73,12 +98,25 @@
         <div class="panel"><h3>Pix</h3><p class="price">${money(byPay.pix)}</p></div>
         <div class="panel"><h3>Dinheiro</h3><p class="price">${money(byPay.dinheiro)}</p></div>
         <div class="panel"><h3>Cartão</h3><p class="price">${money((byPay.cartao || 0) + (byPay.cartao_credito || 0))}</p></div>`;
-      byId("orders").innerHTML = orders.map(o => `<div class="item-row"><span>${new Date(o.created_at).toLocaleString("pt-BR")} - ${o.customer_name || o.channel} - ${o.payment_method}</span><strong>${money(o.total)}</strong></div>`).join("");
+      byId("orders").innerHTML = orders.length ? orders.map(o => `
+        <div class="item-row">
+          <span>${new Date(o.created_at).toLocaleString("pt-BR")} - ${o.customer_name || o.channel} - ${o.payment_method}</span>
+          <span class="actions"><strong>${money(o.total)}</strong><button class="danger" data-delete-cash="${o.id}">Excluir</button></span>
+        </div>
+      `).join("") : `<p class="muted">Nenhum lançamento neste filtro.</p>`;
+      byId("orders").querySelectorAll("[data-delete-cash]").forEach(btn => btn.onclick = () => deleteCashOrder(btn.dataset.deleteCash));
     }
+
     document.querySelectorAll("[data-range]").forEach(btn => btn.onclick = () => {
       document.querySelectorAll("[data-range]").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       range = btn.dataset.range;
+      loadCash();
+    });
+    document.querySelectorAll("[data-payment]").forEach(btn => btn.onclick = () => {
+      document.querySelectorAll("[data-payment]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      paymentFilter = btn.dataset.payment;
       loadCash();
     });
     byId("logout").onclick = () => { localStorage.removeItem("espetinho_owner_ok"); location.reload(); };
