@@ -1,6 +1,27 @@
 -- Adiciona a modalidade FIADO ao Espetinho do Gordinho.
 -- Rode este arquivo no SQL Editor do Supabase antes de usar Fiado no site.
--- Nao mexe nas tabelas da Pizzaria Paulista.
+-- ISOLADO: mexe somente em espetinho_gordinho.espetinho_orders.
+-- Nao mexe em public, Pizzaria Paulista ou qualquer outro schema/tabela.
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_namespace
+    where nspname = 'espetinho_gordinho'
+  ) then
+    raise exception 'Schema espetinho_gordinho nao encontrado. Pare aqui para nao misturar com outro projeto.';
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.tables
+    where table_schema = 'espetinho_gordinho'
+      and table_name = 'espetinho_orders'
+  ) then
+    raise exception 'Tabela espetinho_gordinho.espetinho_orders nao encontrada. Pare aqui para nao misturar com outro projeto.';
+  end if;
+end $$;
 
 do $$
 declare

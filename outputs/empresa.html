@@ -98,7 +98,7 @@
           </div>
         </article>
       `).join("") : `<p class="muted">Nenhum pedido aberto.</p>`;
-      orders.filter(o => o.status === "novo" && !printed.has(o.id)).forEach(async order => {
+      orders.filter(o => o.channel === "publico" && o.status === "novo" && !printed.has(o.id)).forEach(async order => {
         printed.add(order.id);
         savePrinted();
         printOrder(order);
