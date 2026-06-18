@@ -410,6 +410,7 @@ function receiptHtml(order) {
     cartao_credito: "CARTÃO DE CRÉDITO - LEVAR MAQUINETA",
     cartao: "CARTÃO - LEVAR MAQUINETA",
     pix: `PIX - ${CONFIG.PIX_KEY}`,
+    fiado: "FIADO - PAGAMENTO PENDENTE",
     pendente: "PENDENTE"
   }[order.payment_method] || order.payment_method;
   return `

@@ -21,6 +21,7 @@
       <button data-payment="pix">Pix</button>
       <button data-payment="dinheiro">Dinheiro</button>
       <button data-payment="cartao">Cartão</button>
+      <button data-payment="fiado">Fiado</button>
       <button data-payment="pendente">Pendente</button>
     </div>
     <section id="summary" class="menu-list"></section>
@@ -81,30 +82,68 @@
       loadCash();
     }
 
+    async function payFiado(id) {
+      const select = byId("orders").querySelector(`[data-fiado-pay="${id}"]`);
+      const method = select?.value || "dinheiro";
+      if (!confirm(`Dar baixa neste fiado como ${method}?`)) return;
+      await updateOrder(id, { payment_method: method, closed_at: new Date().toISOString() });
+      loadCash();
+    }
+
+    function paymentLabel(method) {
+      return {
+        pix: "Pix",
+        dinheiro: "Dinheiro",
+        cartao: "Cartão",
+        cartao_credito: "Cartão de crédito",
+        fiado: "Fiado",
+        pendente: "Pendente"
+      }[method] || method;
+    }
+
     async function loadCash() {
       const all = await fetchOrders(["fechado", "impresso", "novo", "aberto"]);
       const since = sinceDate();
       const orders = all
         .filter(o => new Date(o.created_at) >= since)
         .filter(paymentMatches);
-      const closed = orders.filter(o => o.status === "fechado" || o.channel !== "mesa");
-      const total = closed.reduce((s, o) => s + Number(o.total || 0), 0);
-      const byPay = closed.reduce((acc, o) => {
+      const received = orders.filter(o =>
+        (o.status === "fechado" || o.channel !== "mesa") &&
+        o.payment_method !== "fiado" &&
+        o.payment_method !== "pendente"
+      );
+      const fiado = orders.filter(o => o.payment_method === "fiado");
+      const total = received.reduce((s, o) => s + Number(o.total || 0), 0);
+      const fiadoTotal = fiado.reduce((s, o) => s + Number(o.total || 0), 0);
+      const byPay = received.reduce((acc, o) => {
         acc[o.payment_method] = (acc[o.payment_method] || 0) + Number(o.total || 0);
         return acc;
       }, {});
       byId("summary").innerHTML = `
-        <div class="panel"><h3>Total</h3><p class="price">${money(total)}</p></div>
+        <div class="panel"><h3>Total recebido</h3><p class="price">${money(total)}</p></div>
         <div class="panel"><h3>Pix</h3><p class="price">${money(byPay.pix)}</p></div>
         <div class="panel"><h3>Dinheiro</h3><p class="price">${money(byPay.dinheiro)}</p></div>
-        <div class="panel"><h3>Cartão</h3><p class="price">${money((byPay.cartao || 0) + (byPay.cartao_credito || 0))}</p></div>`;
+        <div class="panel"><h3>Cartão</h3><p class="price">${money((byPay.cartao || 0) + (byPay.cartao_credito || 0))}</p></div>
+        <div class="panel"><h3>Fiado aberto</h3><p class="price">${money(fiadoTotal)}</p></div>`;
       byId("orders").innerHTML = orders.length ? orders.map(o => `
         <div class="item-row">
-          <span>${new Date(o.created_at).toLocaleString("pt-BR")} - ${o.customer_name || o.channel} - ${o.payment_method}</span>
-          <span class="actions"><strong>${money(o.total)}</strong><button class="danger" data-delete-cash="${o.id}">Excluir</button></span>
+          <span>${new Date(o.created_at).toLocaleString("pt-BR")} - ${o.customer_name || o.channel} - ${paymentLabel(o.payment_method)}</span>
+          <span class="actions">
+            <strong>${money(o.total)}</strong>
+            ${o.payment_method === "fiado" ? `
+              <select data-fiado-pay="${o.id}">
+                <option value="dinheiro">Dinheiro</option>
+                <option value="pix">Pix</option>
+                <option value="cartao">Cartão</option>
+              </select>
+              <button class="good" data-pay-fiado="${o.id}">Dar baixa</button>
+            ` : ""}
+            <button class="danger" data-delete-cash="${o.id}">Excluir</button>
+          </span>
         </div>
       `).join("") : `<p class="muted">Nenhum lançamento neste filtro.</p>`;
       byId("orders").querySelectorAll("[data-delete-cash]").forEach(btn => btn.onclick = () => deleteCashOrder(btn.dataset.deleteCash));
+      byId("orders").querySelectorAll("[data-pay-fiado]").forEach(btn => btn.onclick = () => payFiado(btn.dataset.payFiado));
     }
 
     document.querySelectorAll("[data-range]").forEach(btn => btn.onclick = () => {

@@ -43,7 +43,7 @@ create table if not exists espetinho_gordinho.espetinho_orders (
   fulfillment text check (fulfillment in ('entrega','retirada','balcao','mesa')),
   delivery_area text,
   delivery_fee numeric(10,2) not null default 0,
-  payment_method text not null check (payment_method in ('pix','dinheiro','cartao_credito','cartao','pendente')),
+  payment_method text not null check (payment_method in ('pix','dinheiro','cartao_credito','cartao','pendente','fiado')),
   change_for numeric(10,2),
   subtotal numeric(10,2) not null default 0,
   total numeric(10,2) not null default 0,
