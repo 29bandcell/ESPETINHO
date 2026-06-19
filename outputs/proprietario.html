@@ -138,12 +138,17 @@
               </select>
               <button class="good" data-pay-fiado="${o.id}">Dar baixa</button>
             ` : ""}
+            <button data-second-copy="${o.id}">2&ordf; via / PDF</button>
             <button class="danger" data-delete-cash="${o.id}">Excluir</button>
           </span>
         </div>
       `).join("") : `<p class="muted">Nenhum lançamento neste filtro.</p>`;
       byId("orders").querySelectorAll("[data-delete-cash]").forEach(btn => btn.onclick = () => deleteCashOrder(btn.dataset.deleteCash));
       byId("orders").querySelectorAll("[data-pay-fiado]").forEach(btn => btn.onclick = () => payFiado(btn.dataset.payFiado));
+      byId("orders").querySelectorAll("[data-second-copy]").forEach(btn => btn.onclick = () => {
+        const order = orders.find(o => o.id === btn.dataset.secondCopy);
+        if (order) printOrder(order);
+      });
     }
 
     document.querySelectorAll("[data-range]").forEach(btn => btn.onclick = () => {
